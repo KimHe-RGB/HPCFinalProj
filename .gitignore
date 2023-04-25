@@ -30,3 +30,6 @@
 *.exe
 *.out
 *.app
+
+# asv files from matlab
+*.asv
