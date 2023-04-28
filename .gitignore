@@ -33,3 +33,6 @@
 
 # asv files from matlab
 *.asv
+
+# csv file
+*.csv
