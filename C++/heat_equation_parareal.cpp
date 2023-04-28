@@ -46,7 +46,6 @@ VectorXd explicit_euler_solution(const VectorXd &u, double dt, double dx,
     return u_new;
 }
 
-/*
 // Fine propagator (Runge Kutta 4)
 VectorXd runge_kutta_4(const VectorXd &u, double dt, double dx, double alpha) {
     auto rhs = [&](const VectorXd &u) {
@@ -66,8 +65,17 @@ VectorXd runge_kutta_4(const VectorXd &u, double dt, double dx, double alpha) {
 
     return u + (dt / 6.0) * (k1 + 2 * k2 + 2 * k3 + k4);
 }
-*/
 
+VectorXd runge_kutta_4_solution(const VectorXd &u0, double dt, double dx,
+                                double alpha, int num_time_steps) {
+    VectorXd u = u0;
+    for (int i = 0; i < num_time_steps; i++) {
+        u = runge_kutta_4(u, dt, dx, alpha);
+    }
+    return u;
+}
+
+/*
 // Fine propagator (Crank-Nicolson)
 VectorXd crank_nicolson(const VectorXd &u, double dt, double dx, double alpha) {
     int Nx = u.size();
@@ -106,6 +114,7 @@ VectorXd crank_nicolson_solution(const VectorXd &u0, double dt, double dx,
     }
     return u;
 }
+*/
 
 int main(int argc, char *argv[]) {
     if (argc != 4) {
@@ -117,9 +126,9 @@ int main(int argc, char *argv[]) {
     int Nt = stoi(argv[2]);  // Number of time steps. must be the multiple of
                              // num_processors
     int num_processors = stoi(argv[3]);  // Number of available processors
-    double L = 60.0;                     // Length of the domain
-    double T = 1.0;                      // Total time
-    double alpha = 1.0;                  // Thermal diffusivity
+    double L = 10.0;                     // Length of the domain
+    double T = 100.0;                    // Total time
+    double alpha = 1e-6;                 // Thermal diffusivity
 
     double dx = L / (Nx - 1);
     double dt = T / Nt;
@@ -131,30 +140,31 @@ int main(int argc, char *argv[]) {
     int num_iterations = 100;  // Maximum number of parareal iterations
     double tol = 1e-6;         // Convergence tolerance
 
-    auto parareal_start = std::chrono::high_resolution_clock::now();
+    auto parareal_start = chrono::high_resolution_clock::now();
 
     // Parareal algorithm
     vector<VectorXd> U_coarse(num_subintervals + 1, VectorXd::Zero(Nx));
     vector<VectorXd> U_solution(num_subintervals + 1, VectorXd::Zero(Nx));
+    vector<VectorXd> U_solution_prev(num_subintervals + 1, VectorXd::Zero(Nx));
     vector<VectorXd> U_fine(num_subintervals + 1, VectorXd::Zero(Nx));
     VectorXd U_coarse_prev(Nx);
-    VectorXd U_solution_prev(Nx);
 
     // Initialize the solution with the coarse propagator
     U_coarse[0] = u;
     U_solution[0] = u;
+    U_solution_prev[0] = U_coarse[0];
+    U_coarse_prev = U_coarse[0];
+    U_fine[0] = U_coarse[0];
+
     for (int i = 0; i < num_subintervals; i++) {
         U_coarse[i + 1] =
             explicit_euler(U_coarse[i], T / num_subintervals, dx, alpha);
         U_solution[i + 1] = U_coarse[i + 1];
     }
 
-    int iter = 0;
+    int iter = 1;
     double diff;
     double max_diff;
-    U_solution[0] = U_coarse[0];
-    U_coarse_prev = U_coarse[0];
-    U_fine[0] = U_coarse[0];
     int step_num = Nt / num_subintervals;
 
     do {
@@ -164,11 +174,15 @@ int main(int argc, char *argv[]) {
         // This code runs in serial. To run in parallel, you need to use
         // parallel programming techniques such as OpenMP or MPI.)
         for (int i = 0; i < num_subintervals; i++) {
-            // the solver function of crank_nicolson
-            U_fine[i + 1] =
-                crank_nicolson_solution(U_solution[i], dt, dx, alpha, step_num);
+            // Use crank_nicolson as fine solver
+            // U_fine[i + 1] = crank_nicolson_solution(U_solution_prev[i], dt,
+            // dx,alpha, step_num);
 
-            U_solution_prev = U_solution[i + 1];
+            // Use runge_kutta_4 as fine solver
+            U_fine[i + 1] = runge_kutta_4_solution(U_solution_prev[i], dt, dx,
+                                                   alpha, step_num);
+
+            U_solution_prev[i + 1] = U_solution[i + 1];
             U_coarse_prev = U_coarse[i + 1];
 
             U_coarse[i + 1] =
@@ -176,17 +190,16 @@ int main(int argc, char *argv[]) {
 
             U_solution[i + 1] = U_fine[i + 1] + U_coarse[i + 1] - U_coarse_prev;
 
-            diff = (U_solution[i + 1] - U_solution_prev).norm();
+            diff = (U_solution[i + 1] - U_solution_prev[i + 1]).norm();
             max_diff = max(max_diff, diff);
         }
-
-        iter++;
-        if (iter % 5 == 0) {
+        if (iter % 5 == 0 || iter == 1) {
             cout << "Iteration " << iter << ": " << max_diff << endl;
         }
         iter++;
-    } while (iter < num_iterations && max_diff > tol);
+    } while (iter < num_iterations + 1 && max_diff > tol);
 
+    cout << "Number of Iterations " << iter << endl;
     VectorXd parareal_solution = U_solution[num_subintervals];
 
     auto parareal_end = chrono::high_resolution_clock::now();
@@ -211,8 +224,8 @@ int main(int argc, char *argv[]) {
     VectorXd explicit_euler_sol = explicit_euler_solution(u, dt, dx, alpha, Nt);
     auto explicit_euler_end = chrono::high_resolution_clock::now();
     auto explicit_euler_duration =
-        chrono::duration_cast<std::chrono::milliseconds>(explicit_euler_end -
-                                                         explicit_euler_start)
+        chrono::duration_cast<chrono::milliseconds>(explicit_euler_end -
+                                                    explicit_euler_start)
             .count();
 
     // Calculate the L2-norm of the difference between the numerical solutions
@@ -224,13 +237,14 @@ int main(int argc, char *argv[]) {
     cout << "Explicit Euler computational time (ms): "
          << explicit_euler_duration << endl;
 
+    /*
     // Calculate the Crane-Nicolson solution
     auto crank_nicolson_start = chrono::high_resolution_clock::now();
     VectorXd crank_nicolson_sol = crank_nicolson_solution(u, dt, dx, alpha, Nt);
     auto crank_nicolson_end = chrono::high_resolution_clock::now();
     auto crank_nicolson_duration =
-        chrono::duration_cast<std::chrono::milliseconds>(crank_nicolson_end -
-                                                         crank_nicolson_start)
+        chrono::duration_cast<chrono::milliseconds>(crank_nicolson_end -
+                                                    crank_nicolson_start)
             .count();
 
     // Calculate the L2-norm of the difference between the numerical solutions
@@ -241,37 +255,33 @@ int main(int argc, char *argv[]) {
     cout << "Crank-Nicolson error (L2-norm): " << crank_nicolson_error << endl;
     cout << "Crank-Nicolson computational time (ms): "
          << crank_nicolson_duration << endl;
+   */
 
-    /*
-    // Calculate 4th order Runge-Kutta solution
-    auto runge_kutta_start = chrono::high_resolution_clock::now();
-    VectorXd runge_kutta_sol = u;
-    for (int i = 0; i < Nt; i++) {
-        runge_kutta_sol = runge_kutta_4(runge_kutta_sol, dt, dx, alpha);
-    }
-    auto runge_kutta_end = chrono::high_resolution_clock::now();
-    auto runge_kutta_duration =
-    chrono::duration_cast<std::chrono::milliseconds>(runge_kutta_end -
-    runge_kutta_start).count();
+    // Calculate the runge_kutta_4 solution
+    auto runge_kutta_4_start = chrono::high_resolution_clock::now();
+    VectorXd runge_kutta_4_sol = runge_kutta_4_solution(u, dt, dx, alpha, Nt);
+    auto runge_kutta_4_end = chrono::high_resolution_clock::now();
+    auto runge_kutta_4_duration = chrono::duration_cast<chrono::milliseconds>(
+                                      runge_kutta_4_end - runge_kutta_4_start)
+                                      .count();
 
     // Calculate the L2-norm of the difference between the numerical solutions
-    and the exact solution double runge_kutta_error = (runge_kutta_sol -
-    exact_sol).norm();
+    // and the exact solution
+    double crank_nicolson_error = (runge_kutta_4_sol - exact_sol).norm();
 
-    // Output the errors
-    cout << "Runge-Kutta error (L2-norm): " << runge_kutta_error << endl;
-    cout << "Runge-Kutta computational time (ms): " << runge_kutta_duration <<
-    endl;
-    */
+    // Output the errors and computatinal time of crank-nicolson
+    cout << "Runge Kutta 4 error (L2-norm): " << crank_nicolson_error << endl;
+    cout << "Runge Kutta 4 computational time (ms): " << runge_kutta_4_duration
+         << endl;
 
     // Output the solutions to a CSV file
     ofstream output_file("solutions.csv");
-    output_file << "x,Exact,Parareal,Rough_Approx, Highorder_Approx"
-                << std::endl;
+    output_file << "x,Exact,Parareal,Rough_Approx, Highorder_Approx" << endl;
     for (int i = 0; i < Nx; i++) {
         output_file << x(i) << "," << exact_sol(i) << ","
                     << parareal_solution(i) << "," << explicit_euler_sol(i)
-                    << "," << crank_nicolson_sol(i) << endl;
+                    << "," << runge_kutta_4_sol(i)  // crank_nicolson_sol(i)
+                    << endl;
     }
     output_file.close();
 
