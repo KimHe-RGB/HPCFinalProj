@@ -11,100 +11,104 @@
 %  + F(t_{n-1}, t_n, U_n^k)  
 % --- (2.2)
 
-% for k -> infty 
+
+
+%% parareal
 clear all
 
-t0 = 0; tfinal = 100;
+t0 = 0; tfinal = 30;
 % partition time domain into N equispaced subintervals
-N = 20; T_size = (tfinal-t0)/N;
-T_intervals = zeros(2, N);
+N = 20; 
+interval_size = (tfinal-t0)/N;
+intervals = zeros(2, N);
+
 for i = 1:N
-    T_intervals(:,i) = [t0+(i-1)*T_size; t0+i*T_size];
+    intervals(:,i) = [t0+(i-1)*interval_size; t0+i*interval_size];
 end
 
-% compute initial conditions U_0, U_1, U_2, ... , U_N, from t = t0, t1,
-% ..., tfinal
-% we use a inexpensive operator, say Forward Euler
-phi_sol_f = @(x, t) 1 / 2 * sech(1/2*(x - t)).^2;
+% compute initial conditions U_0, U_1, U_2, ... , U_N, 
+% from t = t0, t1, ..., tfinal 
+% for each subinterval, using inexpensive coarse operator to compute the
+% initial value for it.
+interval_dt = 1e-5;                   % time grid for subinterval
 
-% coarse time and space discretization grid
-C = 0.1;
-ht = 0.005; 
+overall_dt = 1e-2;                    % time grid for coarse 
+interval_initVals = zeros(1, N);   
+
+C = 1;
 L = 60;
-Nx = 64; 
-hx = L / Nx;
-xs = reshape((0:Nx-1)*hx, [Nx,1]) - L/2;
-% U0 = reshape(phi_sol_f(xs, 0), [Nx,1]);
-U0 = reshape([zeros(Nx/2-1,1); 1; 1; zeros(Nx/2-1,1)], [Nx,1]); % "block function"
+Nx = 128;
+dx = L / Nx;
+xs = reshape((0:Nx-1)*dx, [Nx,1]) - L/2;
 
-[uu,tt] = forward_euler_FD(U0, xs, hx, [t0, tfinal], ht, C);
-[uu2,tt2] = RK2_FD(U0, xs, hx, [t0, tfinal], ht, C);
+init_cond_f2 = @(x, t) sin(pi/20 * x);
+U0 = reshape(init_cond_f2(xs, 0), [Nx,1]);
 
-figure(2); clf; 
-hold on;
-plt0 = plot(xs, U0, '-.k');
-plt1 = plot(xs, uu(:,1), '--r');
-plt2 = plot(xs, uu2(:,1), ':b');
-xlim([-L/2, L/2])
-ylim([-0.5, 1])
-grid on
-figure(2); legend([plt0 plt1 plt2], ["y0", "yt1", "yt2"], interpreter="latex", Location="southwest");
-title(sprintf('t = %7.5f',tt(1)),'fontsize',18), drawnow
+[uu,tt] = forward_euler_FD(U0, xs, dx, [t0, tfinal], overall_dt, C);
 
-set(gcf,'doublebuffer','on')
-disp('press <return> to begin'), pause  % wait for user input
-
-for tn = 1:length(tt)
-    if(mod(tn-1, 100) == 0 || tn==length(tt))
-        set(plt1, 'ydata', uu(:,tn))
-        set(plt2, 'ydata', uu2(:,tn))
-        title(sprintf('Nx = %d, h = %4.6f, t = %7.5f',Nx,ht,tt(tn)),'fontsize',18), drawnow
-    end
-end
 
 % for each subintervals we compute with a relatively expensive operator,
-for interval = T_intervals
+for interval = intervals
     % interval : [0; Tsize], [Tsize, 2Tsize], ...
-    t0 = interval(1);
-    tfinal = interval(2);
+    t0 = interval(1); tfinal = interval(2);
+    [uu2,tt2] = RK4_FD(U0, xs, dx, [t0, tfinal], interval_dt, C);
 
 end
 
-% solve the heat equation using finite difference discretization, with forward euler method
-function [uu,tt] = forward_euler_FD(u0, xs, hx, tspan, ht, C)
-    Nx = length(xs);
-    t0 = tspan(1); tfinal = tspan(2);
-    
-    % forward euler method
-    e = ones(Nx,1);
-    A = spdiags([e -2*e e],-1:1,Nx,Nx) * C / hx^2;
-    t = t0;
-    u = u0;
-    
-    i=1;    t_steps = ceil((tfinal - t0) / ht) + 1;
-    tt = zeros(1,t_steps); uu = zeros(Nx,t_steps);
-    done = t >= tfinal;
-    while ~done
-        tt(i) = t; uu(:,i) = u; i=i+1;
-        if(t + ht >= tfinal)
-            ht = tfinal - t;
-            done = true;
-        end
-        u = u + ht * A * u;
-        % fix the boundary condition u(t, x=0) and u(t, x=L)
-        %  u = [u0(1); u(2:end-1); u0(end)];
-        t = t + ht;
-    end
+err_norm1_2 = zeros(size(t_sizes));
+err_norm2_2 = zeros(size(t_sizes));
+for i = 1:length(t_sizes)
+    t_size = t_sizes(i);
+    t1 = t_size;
+    y1 = phi_sol_f(Nx, t1);
+
+    % run both methods with 1 and 1/2 time step size
+    [uu,tt] = forward_euler_FD(U0, xs, dx, [t0, tfinal], ht, C);
+    [uu2,tt2] = RK4_FD(U0, xs, dx, [t0, tfinal], ht, C);
+
+    % since N is big enough its ok not to interpolate
+    e1_M = phi_1 - y0;
+    e2_M = phi_2 - y0;
+    ee_M = phi_1 - phi_2;
+    err_norm1_2(i) = norm(e1_M, 2)*dx;
+    err_norm2_2(i) = norm(e2_M, 2)*dx;
 end
 
-function [uu,tt] = RK2_FD(u0, xs, hx, tspan, ht, C)
+%% plot
+t_sizes_f = t_sizes.^2;
+xticksGrid = [1e-3, 1e-2];
+yticksGrid = [1e-6, 1e-4, 1e-2];
+figure(1); clf; hold;
+figure(1); plt1=plot(t_sizes, err_norm1_2, "b-o", DisplayName="$$\|E_{RK1}\|_1$$");
+figure(1); plt2=plot(t_sizes, err_norm2_2, "r--o", DisplayName="$$\|E_{RK2}\|_1$$");
+figure(1); plt3=plot(t_sizes, t_sizes.^2,  "k-.o", DisplayName="$$\Delta t^2$$");
+xticks(xticksGrid)
+yticks(yticksGrid)
+xline(xticksGrid,'--',Color=[0.7,0.7,0.7])
+yline(yticksGrid,'--',Color=[0.7,0.7,0.7])
+set(gca, 'XScale', 'log')
+set(gca, 'YScale', 'log')
+set(gca, 'XDir','reverse')
+xlabel("Timestep size $$\Delta t$$", Interpreter="latex");
+ylabel("Error $$E$$", Interpreter="latex");
+legend([plt1,plt2,plt3], Interpreter="latex");
+title("Error of PDE solver in Time domain, $$L_1$$", Interpreter="latex");
+
+
+
+
+
+function [uu,tt] = Crank_Nicholson(u0, xs, hx, tspan, ht, C)
     Nx = length(xs);
     t0 = tspan(1); tfinal = tspan(2);
     
     % finite difference recurrence
     e = ones(Nx,1);
-    A = spdiags([e -2*e e],-1:1,Nx,Nx) * C / hx^2;
+    A = spdiags([e -2*e e], -1:1, Nx, Nx) * C / hx^2;
+    
     F = @(ht, u) ht * A * u;
+    R = spdiags([e  2*e e], -1:1, Nx, Nx) * C / hx^2;
+
 
     t = t0;
     u = u0;
@@ -118,13 +122,9 @@ function [uu,tt] = RK2_FD(u0, xs, hx, tspan, ht, C)
             ht = tfinal - t;
             done = true;
         end
-        % u_{n+1/2} = u_{n} + F(t_n, t_n+0.5*ht, u_n)
-        u_half = u + F(ht/2, u);
-        % u_{n+1} = u_{n} + F(t_n, t_n+ht, u_{n+1/2})
-        u = u + F(ht, u_half);
-        
+
         % fix the boundary condition u(t, x=0) and u(t, x=L)
-        %  u = [u0(1); u(2:end-1); u0(end)];
+        u = [u0(1); u(2:end-1); u0(end)];
         t = t + ht;
     end
 end
