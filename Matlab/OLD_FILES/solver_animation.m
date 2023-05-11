@@ -18,7 +18,7 @@ U0 = reshape(init_cond_f(xs, 0), [Nx,1]);
 % U0 = reshape([zeros((Nx-1)/2,1); 1; zeros((Nx-1)/2,1)], [Nx,1]); % Delta function
 
 [uu,tt] = EE_FD(U0, dx, [t0, tfinal], ht, C);
-[uu2,tt2] = Crank_Nicol_FD(U0, dx, [t0, tfinal], ht, C);
+[uu2,tt2] = RK2_FD(U0, dx, [t0, tfinal], ht, C);
 
 % true analytical solution is the heat kernel
 real_U = Heat_kernel(xs,tt(1),C);
