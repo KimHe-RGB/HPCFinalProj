@@ -10,10 +10,9 @@
 % lbry, rbry: left or right boundary condition function of t
 % leftBCType, rightBCType: Neumann or Dirichlet
 
-% implicit Euler Method
-% O(h^2) O(dt)
-% unconditionally stable (for parabolic equation only)
-function u = Heat1D_IE_solver(xspan, tspan, ...
+% RK3 method
+% to be tested
+function u = Heat1D_RK3_solver(xspan, tspan, ...
     icf, df, F,...
     lbry, rbry, leftBCType, rightBCType)
 
@@ -31,12 +30,11 @@ function u = Heat1D_IE_solver(xspan, tspan, ...
 
     [L, r] = Spatial_Operator_Heat1D(xspan,df, leftBCType, rightBCType);
 
-    % Linear system to solve for Implicit Euler
-    I = eye(Nxs); 
-
+    
     R = @(t) [lbry(t); zeros(Nxs-2,1); rbry(t)] .* r;
-    RHS = @(t) reshape(-F(xs, t), [Nxs,1]) + R(t);
-    Fn = @(u, t, ht) (I - ht*L) \ (u - ht*RHS(t));
+    RHS = @(t) reshape(F(xs, t), [Nxs,1]) - R(t);
+    % explicit midpoint
+    Fn = @(u, t, ht) L*u + RHS(t);
 
     while ~done
         i = i + 1;
@@ -44,8 +42,18 @@ function u = Heat1D_IE_solver(xspan, tspan, ...
             ht = tfinal - t;
             done = true;
         end
-        % One Step Method (Backward/Implicit Euler)
-        u = Fn(u, t, ht);
+        % 0   | 0   0   0
+        % 1/2 |1/2  0   0 
+        % 1   |-1   2   0
+        %      1/6 2/3 1/6
+        % RK3 time stepping
+        k1 = Fn(u, t, ht);
+        t1 = t + ht/2;
+        k2 = Fn(u + ht*k1 /2, t1, ht);
+        t2 = t + ht;
+        k3 = Fn(u - ht*k1 + ht*k2 *2, t2, ht);
+        u = u + ht*(k1 /6 + k2 *2/3 + k3 /6);
+
         t = t + ht;
     end
 end

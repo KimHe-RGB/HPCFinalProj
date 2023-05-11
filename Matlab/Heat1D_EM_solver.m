@@ -10,10 +10,9 @@
 % lbry, rbry: left or right boundary condition function of t
 % leftBCType, rightBCType: Neumann or Dirichlet
 
-% implicit Euler Method
-% O(h^2) O(dt)
-% unconditionally stable (for parabolic equation only)
-function u = Heat1D_IE_solver(xspan, tspan, ...
+% Explicit Midpoint Method
+% to be tested
+function u = Heat1D_EM_solver(xspan, tspan, ...
     icf, df, F,...
     lbry, rbry, leftBCType, rightBCType)
 
@@ -31,12 +30,11 @@ function u = Heat1D_IE_solver(xspan, tspan, ...
 
     [L, r] = Spatial_Operator_Heat1D(xspan,df, leftBCType, rightBCType);
 
-    % Linear system to solve for Implicit Euler
-    I = eye(Nxs); 
-
+    
     R = @(t) [lbry(t); zeros(Nxs-2,1); rbry(t)] .* r;
-    RHS = @(t) reshape(-F(xs, t), [Nxs,1]) + R(t);
-    Fn = @(u, t, ht) (I - ht*L) \ (u - ht*RHS(t));
+    RHS = @(t) reshape(F(xs, t), [Nxs,1]) - R(t);
+    % explicit midpoint
+    Fn = @(u, t, ht) ht*(L*u + ht/2*L*L*u + ht/2*L*RHS(t) + RHS(t+0.5*ht));
 
     while ~done
         i = i + 1;
@@ -44,8 +42,9 @@ function u = Heat1D_IE_solver(xspan, tspan, ...
             ht = tfinal - t;
             done = true;
         end
-        % One Step Method (Backward/Implicit Euler)
-        u = Fn(u, t, ht);
+        u = u + Fn(u, t, ht);
+
+
         t = t + ht;
     end
 end
