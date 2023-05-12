@@ -33,8 +33,9 @@ function u = Heat1D_RK3_solver(xspan, tspan, ...
     
     R = @(t) [lbry(t); zeros(Nxs-2,1); rbry(t)] .* r;
     RHS = @(t) reshape(F(xs, t), [Nxs,1]) - R(t);
-    % explicit midpoint
-    Fn = @(u, t, ht) L*u + RHS(t);
+    
+    % RHS of the ODE: u_t = u_xx + f = L*u + RHS(t)
+    Fn = @(u, t) L*u + RHS(t);
 
     while ~done
         i = i + 1;
@@ -47,14 +48,20 @@ function u = Heat1D_RK3_solver(xspan, tspan, ...
         % 1   |-1   2   0
         %      1/6 2/3 1/6
         % RK3 time stepping
-        k1 = Fn(u, t, ht);
-        t1 = t + ht/2;
-        k2 = Fn(u + ht*k1 /2, t1, ht);
-        t2 = t + ht;
-        k3 = Fn(u - ht*k1 + ht*k2 *2, t2, ht);
-        u = u + ht*(k1 /6 + k2 *2/3 + k3 /6);
-
+        k1 = Fn(u, t);
+        k2 = Fn(u + ht*k1 /2, t + ht/2);
+        k3 = Fn(u - ht*k1 + ht*k2*2, t + ht);
+        u = u + ht*(k1 + k2 *4 + k3)/6;
         t = t + ht;
     end
 end
 
+function res = RK4(ht, u0, f)
+
+    k1 = f(u0, t);
+    k2 = f(u0 + ht*k1, t+ht);
+    k3 = f(u0 + ht*k1/4 + ht*k2/4, t+ht);
+
+    res = u0 + (k1 + k2 + 4*k3)*ht/6;
+
+end
