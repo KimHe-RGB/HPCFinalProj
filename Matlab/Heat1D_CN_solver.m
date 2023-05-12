@@ -36,7 +36,7 @@ function u = Heat1D_CN_solver(xspan, tspan, ...
 
     R = @(t) [lbry(t); zeros(Nxs-2,1); rbry(t)] .* r;
     RHS = @(t) reshape(-F(xs, t), [Nxs,1]) + R(t);
-    Fn = @(u,t,ht) (I-ht*L/2) \ ((I+ht*L/2)*u - ht*RHS(t));
+    Fn = @(u,t,ht) (I-ht*L/2) \ ((I+ht*L/2)*u - ht*RHS(t+ht/2));
 
     while ~done
         i = i + 1;

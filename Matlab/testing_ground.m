@@ -195,9 +195,9 @@ for i = 1:length(hts)
     u_int = reshape(interpft(u,M), [M,1]); 
     real_u_int = reshape(interpft(real_u,M), [M,1]);
 
-    err_1s(i) = norm(u_int - real_u_int, 1)*ht;
-    err_2s(i) = norm(u_int - real_u_int, 2)*ht;
-    err_infs(i) = norm(u_int - real_u_int, "inf")*ht;
+    err_1s(i) = norm(u_int - real_u_int, 1);
+    err_2s(i) = norm(u_int - real_u_int, 2);
+    err_infs(i) = norm(u_int - real_u_int, "inf");
 end
 
 % error convergence order
@@ -206,7 +206,7 @@ hold on;
 plot(hts, err_1s, 'r-o', DisplayName="$$L_1$$ error")
 plot(hts, err_2s, 'g-o', DisplayName="$$L_2$$ error")
 plot(hts, err_infs, 'b-o', DisplayName="$$L_\infty$$ error")
-plot(hts, 40*hts.^2, 'k--o', DisplayName="$$O(\Delta t^2)$$");
+plot(hts, hts.^2, 'k--o', DisplayName="$$O(\Delta t^2)$");
 plot(hts, 10*hts, '--o', DisplayName="$$O(\Delta t)$$",Color=[.5 .5 .5]);
 
 figure(2); legend(interpreter="latex", Location="southwest");
