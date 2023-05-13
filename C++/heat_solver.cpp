@@ -1,13 +1,11 @@
-#include <cmath>
-#include <Eigen/Sparse>
-#include <Eigen/Dense>
-#include <vector>
-#include <iostream>
+//
+// Created by Keigo Ando on 5/13/23.
+//
 
-const double PI = 3.14159265358979323846;
+#include "heat_solver.h"
 
 Eigen::VectorXd u_sol_f(const Eigen::VectorXd &x, double t) {
-    return (std::exp(-PI * PI * t / 4) * (PI * x / 2).array().cos()).matrix();
+    return (std::exp(-PI * PI * t / 4) * Eigen::cos((PI * x / 2).array())).matrix();
 }
 
 double lbry_f(double t) {
@@ -84,7 +82,7 @@ std::pair<Eigen::MatrixXd, Eigen::VectorXd> Spatial_Operator_Heat1D(
 Eigen::VectorXd Heat1D_RK3_solver(
         const std::vector<double> &xspan,
         const std::vector<double> &tspan,
-        const std::function<Eigen::VectorXd(const Eigen::VectorXd &)> &icf,
+        const Eigen::VectorXd &init_con,
         const std::function<Eigen::VectorXd(const Eigen::VectorXd &)> &df,
         const std::function<Eigen::VectorXd(const Eigen::VectorXd &, double)> &F,
         const std::function<double(double)> &lbry,
@@ -105,7 +103,7 @@ Eigen::VectorXd Heat1D_RK3_solver(
     }
 
     //Eigen::VectorXd xr = Eigen::VectorXd::LinSpaced(xs.size(), xs.front(), xs.back());
-    Eigen::VectorXd u = icf(xs);
+    Eigen::VectorXd u = init_con;
 
 
     Eigen::MatrixXd L;
@@ -122,8 +120,6 @@ Eigen::VectorXd Heat1D_RK3_solver(
     auto RHS = [F, &xs, R](double t) mutable -> Eigen::VectorXd {
         return F(xs, t) - R(t);
     };
-
-    Eigen::VectorXd hey = F(xs, 1.0) - R(1.0);
 
     auto Fn = [L, RHS](const Eigen::VectorXd &u, double t) mutable -> Eigen::MatrixXd {
         return L * u + RHS(t);
@@ -145,7 +141,7 @@ Eigen::VectorXd Heat1D_RK3_solver(
 Eigen::VectorXd Heat1D_IE_solver(
         const std::vector<double> &xspan,
         const std::vector<double> &tspan,
-        const std::function<Eigen::VectorXd(const Eigen::VectorXd &)> &icf,
+        const Eigen::VectorXd &init_con,
         const std::function<Eigen::VectorXd(const Eigen::VectorXd &)> &df,
         const std::function<Eigen::VectorXd(const Eigen::VectorXd &, double)> &F,
         const std::function<double(double)> &lbry,
@@ -168,7 +164,7 @@ Eigen::VectorXd Heat1D_IE_solver(
 
     double t = t0;
     int i = 1;
-    Eigen::VectorXd u = icf(xs);
+    Eigen::VectorXd u = init_con;
 
     bool done = t >= tfinal;
 
@@ -189,9 +185,11 @@ Eigen::VectorXd Heat1D_IE_solver(
         return -F(xs, t) + R(t);
     };
 
-    auto Fn = [I, L, RHS](const Eigen::VectorXd &u, double t, double ht) mutable -> Eigen::VectorXd {
-        return (I - ht * L).colPivHouseholderQr().solve(u - ht * RHS(t));
+    Eigen::MatrixXd inverseMatrix = (I - ht * L).inverse();
+    auto Fn = [inverseMatrix, RHS](const Eigen::VectorXd &u, double t, double ht) mutable -> Eigen::VectorXd {
+        return inverseMatrix * (u - ht * RHS(t));
     };
+
 
     while (!done) {
         ++i;
@@ -208,7 +206,7 @@ Eigen::VectorXd Heat1D_IE_solver(
 Eigen::VectorXd Heat1D_CN_solver(
         const std::vector<double> &xspan,
         const std::vector<double> &tspan,
-        const std::function<Eigen::VectorXd(const Eigen::VectorXd &)> &icf,
+        const Eigen::VectorXd &init_con,
         const std::function<Eigen::VectorXd(const Eigen::VectorXd &)> &df,
         const std::function<Eigen::VectorXd(const Eigen::VectorXd &, double)> &F,
         const std::function<double(double)> &lbry,
@@ -231,7 +229,7 @@ Eigen::VectorXd Heat1D_CN_solver(
 
     double t = t0;
     int i = 1;
-    Eigen::VectorXd u = icf(xs);
+    Eigen::VectorXd u = init_con;
 
     bool done = t >= tfinal;
 
@@ -252,9 +250,11 @@ Eigen::VectorXd Heat1D_CN_solver(
         return -F(xs, t) + R(t);
     };
 
-    auto Fn = [I, L, RHS](const Eigen::VectorXd &u, double t, double ht) mutable -> Eigen::VectorXd {
-        return (I - ht * L / 2).colPivHouseholderQr().solve((I + ht * L / 2) * u - ht * RHS(t + ht / 2));
+    auto QR = (I - ht * L / 2).colPivHouseholderQr();
+    auto Fn = [I, L, RHS, &QR](const Eigen::VectorXd &u, double t, double ht) mutable -> Eigen::VectorXd {
+        return QR.solve((I + ht * L / 2) * u - ht * RHS(t + ht / 2));
     };
+
 
     while (!done) {
         ++i;
@@ -266,56 +266,4 @@ Eigen::VectorXd Heat1D_CN_solver(
         t += ht;
     }
     return u;
-}
-
-int main() {
-    double CFL = 1.0 / 6;
-    std::vector<int> range = {-5, -4, -3, -2, -1};//{-8, -7, -6, -5, -4, -3, -2, -1};
-    Eigen::VectorXd hxs(range.size()), hts(range.size());
-    for (int i = 0; i < range.size(); ++i) {
-        hxs(i) = std::pow(2, range[i]);
-        hts(i) = std::pow(hxs(i), 2) * CFL;
-    }
-    double x0 = 0, xfinal = 1;
-    double t0 = 0, tfinal = 2;
-    std::vector<double> err_1s(range.size()), err_2s(range.size()), err_infs(range.size());
-
-    for (int i = 0; i < range.size(); ++i) {
-        double hx = hxs(i), ht = hts(i);
-        Eigen::VectorXd xs = Eigen::VectorXd::LinSpaced((xfinal - x0 - hx) / hx + 1, x0 + hx / 2, xfinal - hx / 2);
-        int Nxs = xs.size();
-
-        std::vector<double> xspan = {x0, hx, xfinal};
-        std::vector<double> tspan = {t0, ht, tfinal};
-
-        Eigen::VectorXd u = Heat1D_IE_solver(xspan, tspan, init_cond_f, diffusivity_f, force_f, lbry_f, rbry_f);
-        Eigen::VectorXd real_u = u_sol_f(xs, tfinal);
-        int M = 1024;
-
-        if (u.size() != real_u.size()) {
-            std::cerr << "Error: For " << i << "th iteration, Dimensions of u and real_u do not match. u size: "
-                      << u.size() << ", real_u size: " << real_u.size() << std::endl;
-            return -1;  // Or handle the error in some other way
-        }
-
-        Eigen::VectorXd dif = u - real_u;
-
-        int hey = 3;
-        err_1s[i] = (u - real_u).lpNorm<1>();
-        //Eigen::VectorXd u_int(M), real_u_int(M);
-        // We need to implement an interpolation function here
-        err_1s[i] = (u - real_u).lpNorm<1>();
-        err_2s[i] = (u - real_u).norm();
-        err_infs[i] = (u - real_u).lpNorm<Eigen::Infinity>();
-    }
-
-    // Print or use the error values
-    for (int i = 0; i < range.size(); ++i) {
-        std::cout << "For hx = " << hxs(i) << ", the errors are:\n";
-        std::cout << "L1 error: " << err_1s[i] << "\n";
-        std::cout << "L2 error: " << err_2s[i] << "\n";
-        std::cout << "Infinity norm error: " << err_infs[i] << "\n";
-        std::cout << std::endl;
-    }
-    return 0;
 }
