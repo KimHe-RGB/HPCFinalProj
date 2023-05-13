@@ -1,25 +1,26 @@
 #include "heat_solver.h"
 #include "heat_solver.cpp"
 #include <chrono>
+#include <omp.h>
 
 int main() {
 
     //Variable setting
     double CFL = 1.0 / 6;
-    std::vector<int> range = {-5, -4, -3, -2, -1};//{-8, -7, -6, -5, -4, -3, -2, -1};
+    std::vector<int> range = {-6, -5, -4, -3, -2, -1};//{-8, -7, -6, -5, -4, -3, -2, -1};
     Eigen::VectorXd hxs(range.size()), hts(range.size());
     for (int i = 0; i < range.size(); ++i) {
         hxs(i) = std::pow(2, range[i]);
         hts(i) = std::pow(hxs(i), 2) * CFL;
     }
     double x0 = 0, xfinal = 1;
-    double t0 = 0, tfinal = 2;
+    double t0 = 0, tfinal = 3;
 
     //Variables for parallelize
-    int num_processors = 10;
+    int num_processors = omp_get_max_threads();
     int num_subintervals = num_processors;        // Divide the time domain into subintervals
     int num_iterations = 100;  // Maximum number of parareal iterations
-    double tol = 1e-5;         // Convergence tolerance
+    double tol = 1e-8;         // Convergence tolerance
 
     std::vector<double> err_1s_PR(range.size()), err_2s_PR(range.size()), err_infs_PR(range.size());
     std::vector<double> err_1s_IE(range.size()), err_2s_IE(range.size()), err_infs_IE(range.size());
@@ -47,26 +48,24 @@ int main() {
         std::vector<Eigen::VectorXd> U_solution(num_subintervals + 1, Eigen::VectorXd::Zero(Nxs));
         std::vector<Eigen::VectorXd> U_solution_prev(num_subintervals + 1, Eigen::VectorXd::Zero(Nxs));
         std::vector<Eigen::VectorXd> U_fine(num_subintervals + 1, Eigen::VectorXd::Zero(Nxs));
-        Eigen::VectorXd U_coarse_prev(Nxs);
+        Eigen::VectorXd U_coarse_new;
 
         // Start timing for PR_solver
         auto start_PR = std::chrono::high_resolution_clock::now();
 
         U_coarse[0] = init_con;
         U_solution[0] = init_con;
-        U_solution_prev[0] = U_coarse[0];
-        U_coarse_prev = U_coarse[0];
-        U_fine[0] = U_coarse[0];
+        U_fine[0] = init_con;
 
         for (int i = 0; i < num_subintervals; i++) {
             double t_s = (i + 1) * (tfinal - t0) / num_subintervals + t0;
             double t_e = t_s + (tfinal - t0) / num_subintervals;
-            //double t_i = t_s + (tfinal - t0) / num_subintervals/5;
-            std::vector<double> tspan_mini = {t_s, t_e, t_e};
+            double t_i = (tfinal - t0) / num_subintervals / 5;
+            std::vector<double> tspan_mini = {t_s, ht, t_e};
             U_coarse[i + 1] =
                     Heat1D_IE_solver(xspan, tspan_mini, U_coarse[i], diffusivity_f, force_f, lbry_f, rbry_f);
-            U_solution[i + 1] = U_coarse[i + 1];
         }
+        U_solution = U_coarse;
 
         int iter = 1;
         double diff;
@@ -74,27 +73,25 @@ int main() {
 
         do {
             max_diff = 0;
-            // Solve each subinterval with the fine propagator in parallel
-
-            // This code runs in serial. To run in parallel, you need to use
-            // parallel programming techniques such as OpenMP or MPI.)
+            // OpenMP parallel for loop
+            #pragma omp parallel for shared(U_fine, U_solution, xspan, diffusivity_f, force_f, lbry_f, rbry_f, tfinal, t0, num_subintervals, ht) private(i) schedule(static)
             for (int i = 0; i < num_subintervals; i++) {
-                // Use crank_nicolson as fine solver
-                // U_fine[i + 1] = crank_nicolson_solution(U_solution_prev[i], dt,
-                // dx,alpha, step_num);
-
                 double t_s = i * (tfinal - t0) / num_subintervals + t0;
                 double t_e = t_s + (tfinal - t0) / num_subintervals;
-                std::vector<double> tspan_mini2 = {t_s, t_s+ht, t_e};
-                U_fine[i + 1] = Heat1D_CN_solver(xspan,tspan_mini2,U_solution_prev[i], diffusivity_f, force_f,lbry_f,rbry_f);
+                std::vector<double> tspan_mini2 = {t_s, ht, t_e};
+                U_fine[i + 1] = Heat1D_CN_solver(xspan, tspan_mini2, U_solution[i], diffusivity_f, force_f, lbry_f,
+                                                 rbry_f);
+            }
 
-                U_solution_prev[i + 1] = U_solution[i + 1];
-                U_coarse_prev = U_coarse[i + 1];
-
-                U_coarse[i + 1] =
-                        Heat1D_IE_solver(xspan,tspan_mini2,U_solution[i], diffusivity_f,force_f,lbry_f,rbry_f);
-                U_solution[i + 1] = U_fine[i + 1] + U_coarse[i + 1] - U_coarse_prev;
-
+            for (int i = 0; i < num_subintervals; i++) {
+                double t_s = i * (tfinal - t0) / num_subintervals + t0;
+                double t_e = t_s + (tfinal - t0) / num_subintervals;
+                std::vector<double> tspan_mini2 = {t_s, ht, t_e};
+                U_solution_prev[i+1] = U_solution[i+1];
+                U_coarse_new =
+                        Heat1D_IE_solver(xspan, tspan_mini2, U_solution[i], diffusivity_f, force_f, lbry_f, rbry_f);
+                U_solution[i + 1] = U_fine[i + 1] + U_coarse_new - U_coarse[i + 1];
+                U_coarse[i + 1] = U_coarse_new;
                 diff = (U_solution[i + 1] - U_solution_prev[i + 1]).norm();
                 max_diff = std::max(max_diff, diff);
             }
@@ -103,7 +100,6 @@ int main() {
             }
             iter++;
         } while (iter < num_iterations + 1 && max_diff > tol);
-
 
         // Stop timing for PR_solver and calculate the duration
         auto stop_PR = std::chrono::high_resolution_clock::now();

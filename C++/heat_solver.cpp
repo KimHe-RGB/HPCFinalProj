@@ -89,10 +89,10 @@ Eigen::VectorXd Heat1D_RK3_solver(
         const std::function<double(double)> &rbry) {
 
     double t0 = tspan.front();
-    double ht = tspan[1] - tspan[0];
+    double ht = tspan[1];
     double tfinal = tspan.back();
     double x0 = xspan.front();
-    double hx = xspan[1] - xspan[0];
+    double hx = xspan[1];
     double xfinal = xspan.back();
 
     int Nxs = static_cast<int>((xfinal - x0) / hx); // Calculate the number of elements in xs directly
@@ -149,10 +149,10 @@ Eigen::VectorXd Heat1D_IE_solver(
 ) {
 
     double t0 = tspan.front();
-    double ht = tspan[1] - tspan[0];
+    double ht = tspan[1];
     double tfinal = tspan.back();
     double x0 = xspan.front();
-    double hx = xspan[1] - xspan[0];
+    double hx = xspan[1];
     double xfinal = xspan.back();
 
     int Nxs = static_cast<int>((xfinal - x0) / hx);
@@ -214,10 +214,10 @@ Eigen::VectorXd Heat1D_CN_solver(
 ) {
 
     double t0 = tspan.front();
-    double ht = tspan[1] - tspan[0];
+    double ht = tspan[1];
     double tfinal = tspan.back();
     double x0 = xspan.front();
-    double hx = xspan[1] - xspan[0];
+    double hx = xspan[1];
     double xfinal = xspan.back();
 
     int Nxs = static_cast<int>((xfinal - x0) / hx);
