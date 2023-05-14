@@ -1,26 +1,27 @@
-#include "heat_solver.h"
+// clang -Xpreprocessor -fopenmp -lomp -I/opt/homebrew/opt/libomp/include/ -o parareal_naive -std=c++17 parareal_naive.cpp
+
 #include "heat_solver.cpp"
 #include <chrono>
-#include <omp.h>
+#include "/opt/homebrew/Cellar/libomp/16.0.3/include/omp.h"
 
 int main() {
 
     //Variable setting
-    double CFL = 1.0 / 6;
-    std::vector<int> range = {-6, -5, -4, -3, -2, -1};//{-8, -7, -6, -5, -4, -3, -2, -1};
+    //double CFL = 1.0 / 6;
+    std::vector<int> range = {-6,-5,-4, -3, -2, -1};//{-8, -7, -6, -5, -4, -3, -2, -1};
     Eigen::VectorXd hxs(range.size()), hts(range.size());
     for (int i = 0; i < range.size(); ++i) {
         hxs(i) = std::pow(2, range[i]);
-        hts(i) = std::pow(hxs(i), 2) * CFL;
+        hts(i) = hxs(i);
     }
-    double x0 = 0, xfinal = 1;
-    double t0 = 0, tfinal = 3;
+    double x0 = 0, xfinal = 5;
+    double t0 = 0, tfinal = std::pow(2,7);
 
     //Variables for parallelize
-    int num_processors = omp_get_max_threads();
+    int num_processors = omp_get_max_threads(); //5;
     int num_subintervals = num_processors;        // Divide the time domain into subintervals
     int num_iterations = 100;  // Maximum number of parareal iterations
-    double tol = 1e-8;         // Convergence tolerance
+    double tol = 1e-6;         // Convergence tolerance
 
     std::vector<double> err_1s_PR(range.size()), err_2s_PR(range.size()), err_infs_PR(range.size());
     std::vector<double> err_1s_IE(range.size()), err_2s_IE(range.size()), err_infs_IE(range.size());
@@ -74,7 +75,7 @@ int main() {
         do {
             max_diff = 0;
             // OpenMP parallel for loop
-            #pragma omp parallel for shared(U_fine, U_solution, xspan, diffusivity_f, force_f, lbry_f, rbry_f, tfinal, t0, num_subintervals, ht) private(i) schedule(static)
+            #pragma omp parallel for shared(U_fine, U_solution, xspan, tfinal, t0, num_subintervals, ht) private(i) schedule(static)
             for (int i = 0; i < num_subintervals; i++) {
                 double t_s = i * (tfinal - t0) / num_subintervals + t0;
                 double t_e = t_s + (tfinal - t0) / num_subintervals;
@@ -86,7 +87,7 @@ int main() {
             for (int i = 0; i < num_subintervals; i++) {
                 double t_s = i * (tfinal - t0) / num_subintervals + t0;
                 double t_e = t_s + (tfinal - t0) / num_subintervals;
-                std::vector<double> tspan_mini2 = {t_s, ht, t_e};
+                std::vector<double> tspan_mini2 = {t_s, ht*5, t_e};
                 U_solution_prev[i+1] = U_solution[i+1];
                 U_coarse_new =
                         Heat1D_IE_solver(xspan, tspan_mini2, U_solution[i], diffusivity_f, force_f, lbry_f, rbry_f);

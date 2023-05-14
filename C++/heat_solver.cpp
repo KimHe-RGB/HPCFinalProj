@@ -249,7 +249,6 @@ Eigen::VectorXd Heat1D_CN_solver(
     auto RHS = [F, &xs, R](double t) mutable -> Eigen::VectorXd {
         return -F(xs, t) + R(t);
     };
-
     auto QR = (I - ht * L / 2).colPivHouseholderQr();
     auto Fn = [I, L, RHS, &QR](const Eigen::VectorXd &u, double t, double ht) mutable -> Eigen::VectorXd {
         return QR.solve((I + ht * L / 2) * u - ht * RHS(t + ht / 2));

@@ -1,7 +1,6 @@
 //
 // Created by Keigo Ando on 5/13/23.
 //
-
 #ifndef HEAT_SOLVER_H
 #define HEAT_SOLVER_H
 
