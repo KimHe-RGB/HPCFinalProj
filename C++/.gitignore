@@ -4,3 +4,7 @@ baseline
 error
 parareal_naive
 /parareal_naive.dSYM
+*.py
+*.csv
+*.out
+*.eps
