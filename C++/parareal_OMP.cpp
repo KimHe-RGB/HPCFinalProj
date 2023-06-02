@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
     // Variable setting
     // double CFL = 1.0 / 6;
     // std::vector<int> range = {-7, -6, -5, -4, -3, -2, -1};
-    std::vector<int> range = {1, 2, 4, 8, 16, 32, 48};
+    std::vector<int> range = {1, 2, 4, 8, 16, 32, 64};
     /*
     Eigen::VectorXd hxs(range.size()), hts(range.size());
     for (int i = 0; i < range.size(); ++i) {
